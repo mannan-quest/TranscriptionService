@@ -1,0 +1,77 @@
+# Python-specific
+*.py[cod]
+__pycache__/
+*.so
+*.pyd
+*.pyo
+
+# Virtual environment
+venv/
+env/
+.venv/
+ENV/
+*.env
+*.env.*
+
+# PyCharm project files
+.idea/
+*.iml
+
+# Byte-compiled Python files
+*.pyc
+*.pyo
+*.pyd
+__pycache__/
+
+# Logs
+*.log
+
+# Database
+*.sqlite3
+*.db
+
+# FastAPI auto-generated files
+*.schema.json
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+
+# Coverage reports
+htmlcov/
+.coverage
+*.cover
+*.py,cover
+
+# Testing results
+.tox/
+.nox/
+*.pytest_cache/
+
+# Temporary files
+*.tmp
+*.temp
+*.swp
+*.swo
+
+# Cache files
+.cache/
+__pycache__/
+*.egg
+*.egg-info/
+dist/
+build/
+
+# Docker-related
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Miscellaneous
+*.bak
+*.orig
+*.rej
+
