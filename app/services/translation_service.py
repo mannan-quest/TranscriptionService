@@ -130,7 +130,7 @@ class TranslationAnalysisService:
         Please do the following in JSON format:
         1. Provide an "overall_topic", "overall_summary", and "overall_description" for the entire text.
         2. You are provided with a list of topics/segments with their start and end times. You are to combine the segments and then analyze them. About making new segments you should keep below things in mind:
-            - A segment should be at least 300 seconds/5 minutes long.
+            - A segment should be at least 300 seconds long.
             - Translate the text within each segment to English.
             - A segment should be a complete thought or idea.
             - Segment should not be short, its very important to keep the segment long enough.

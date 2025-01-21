@@ -14,6 +14,7 @@ from ...services.media_converter import MediaConverter
 from ...services.transcription_service import TranscriptionService
 from ...services.translation_service import TranslationAnalysisService
 from ...services.youtube_service import YouTubeService
+import aiofiles
 
 router = APIRouter()
 supabase = create_client(settings.SUPABASE_URL, settings.SUPABASE_KEY)
@@ -131,24 +132,46 @@ async def analyze_live_media(request: AnalyzeLiveMediaRequest):
 
 
 @router.post("/analyze-media", response_model=dict)
-async def analyze_media(lecture_id: int):
+async def analyze_media(lecture_id: int, file: UploadFile = File(...)):
     try:
+        if not file.filename.endswith(('.mp3', '.mp4')):
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid file format. Only MP3 and MP4 files are supported."
+            )
+
         # Initialize 'loading' and 'progress'
         supabase.table("lectures").update({
             "loading": True,
-            "progress": 0.0  # Start at 0%
+            "progress": 0.0
         }).eq("lecture_id", lecture_id).execute()
 
-        # Return an immediate response
-        asyncio.create_task(process_media(lecture_id))  # Run processing asynchronously
+        # Create temp directory if it doesn't exist
+        temp_dir = "temp_uploads"
+        os.makedirs(temp_dir, exist_ok=True)
+
+        # Save the file with a unique name to avoid conflicts
+        file_path = os.path.join(temp_dir, f"lecture_{lecture_id}_{file.filename}")
+
+        # Actually save the file to disk
+        async with aiofiles.open(file_path, 'wb') as out_file:
+            content = await file.read()  # async read
+            await out_file.write(content)  # async write
+
+        print('Saved file to:', file_path)
+
+        # Start processing asynchronously
+        asyncio.create_task(process_media(lecture_id, file_path))
         return {"message": "Processing started", "lecture_id": lecture_id}
 
     except Exception as e:
         print(f"Error analyzing media: {e}")
+        # Clean up file if it exists
+        if 'file_path' in locals() and os.path.exists(file_path):
+            os.remove(file_path)
         raise HTTPException(status_code=500, detail=str(e))
 
-
-async def process_media(lecture_id: int):
+async def process_media(lecture_id: int,file_path: str):
     """Process the media and update 'progress' column as each step completes."""
     try:
         def update_progress(value: float):
@@ -158,12 +181,12 @@ async def process_media(lecture_id: int):
                 .execute()
 
         # 1) Fetch the file path from the 'lectures' table
-        lecture_data = supabase.table("lectures") \
-            .select("recording") \
-            .eq("lecture_id", lecture_id) \
-            .execute()
-        transcription_path = lecture_data.data[0]["recording"]
-        file_name = transcription_path.split("/", 1)[1]
+        # lecture_data = supabase.table("lectures") \
+        #     .select("recording") \
+        #     .eq("lecture_id", lecture_id) \
+        #     .execute()
+        # transcription_path = lecture_data.data[0]["recording"]
+        # file_name = transcription_path.split("/", 1)[1]
 
         # Initialize services
         media_converter = MediaConverter()
@@ -172,19 +195,19 @@ async def process_media(lecture_id: int):
         youtube_service = YouTubeService()
 
         # 2) Download the file from Supabase storage
-        transcription_file = await media_converter.fetch_file_from_supabase('recordings', file_name)
-        update_progress(0.1)  # 10% done
+        # transcription_file = await media_converter.fetch_file_from_supabase('recordings', file_name)
+        # update_progress(0.1)  # 10% done
 
         # 3) Convert to audio if it's an MP4
-        if transcription_file.endswith('.mp4'):
-            audio_path = await media_converter.convert_video_to_audio(transcription_file)
-        else:
-            audio_path = transcription_file
+        # Convert to audio if it's an MP4
+
+        audio_path = file_path
         update_progress(0.2)  # 20% done
 
         # 4) Transcribe
         hindi_transcription = await transcription_service.transcribe_audio(audio_path)
         paragraphs = hindi_transcription.get('paragraphs', [])
+        print('paragraphs:', paragraphs)
         update_progress(0.4)  # 40% done
 
         # 5) Translate and analyze
@@ -225,7 +248,6 @@ async def process_media(lecture_id: int):
                 "thumbnail": resource["thumbnail"],
                 "channel_name": resource["channel_name"],
                 "published_at": resource["published_at"],
-                "viewCount": resource["viewCount"],
             }).execute()
         update_progress(0.9)  # 90% done
 
@@ -275,6 +297,10 @@ async def process_media(lecture_id: int):
         }).eq("lecture_id", lecture_id).execute()
         raise e
         print(f"Error processing lecture {lecture_id}: {e}")
+    # finally:
+    #     # Clean up temporary file
+    #     if os.path.exists(file_path):
+    #         os.remove(file_path)
 
 
 # For Live Transcription
