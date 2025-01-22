@@ -151,7 +151,7 @@ async def analyze_media(lecture_id: int, file: UploadFile = File(...)):
         os.makedirs(temp_dir, exist_ok=True)
 
         # Save the file with a unique name to avoid conflicts
-        file_path = os.path.join(temp_dir, f"lecture_{lecture_id}_{file.filename}")
+        file_path = os.path.join(temp_dir, f"lecture_{file.filename}")
 
         # Actually save the file to disk
         async with aiofiles.open(file_path, 'wb') as out_file:
