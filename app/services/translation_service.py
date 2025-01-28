@@ -1,7 +1,6 @@
 from typing import List, Dict, Any
 
 from openai import AsyncOpenAI
-import json
 from ..core.config import settings
 from pydantic import BaseModel
 

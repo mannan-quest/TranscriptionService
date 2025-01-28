@@ -1,14 +1,18 @@
 import os
 import asyncio
 from datetime import datetime
+from typing import List
 
 from fastapi import APIRouter, UploadFile, File, HTTPException
+from openai import OpenAI
 from pydantic import BaseModel, Field
 from starlette.websockets import WebSocket
 from supabase import create_client
 
 from ...core.config import settings
 from ...services.assistant import Assistant
+from ...services.embedding_service import EmbeddingService
+from ...services.lecture_search_service import SearchRequest, LectureSearchService, SearchCourseRequest
 from ...services.live_data_formating import LiveDataFormating, AnalyzeLiveMediaRequest
 from ...services.media_converter import MediaConverter
 from ...services.transcription_service import TranscriptionService
@@ -116,7 +120,6 @@ async def analyze_live_media(request: AnalyzeLiveMediaRequest):
             "loading": False
         }).eq('lecture_id', lecture_response.data[0]['lecture_id']).execute()
 
-
         return {
             'lecture_id': lecture_response.data[0]['lecture_id'],
         }
@@ -171,7 +174,8 @@ async def analyze_media(lecture_id: int, file: UploadFile = File(...)):
             os.remove(file_path)
         raise HTTPException(status_code=500, detail=str(e))
 
-async def process_media(lecture_id: int,file_path: str):
+
+async def process_media(lecture_id: int, file_path: str):
     """Process the media and update 'progress' column as each step completes."""
     try:
         def update_progress(value: float):
@@ -286,6 +290,7 @@ async def process_media(lecture_id: int,file_path: str):
 
         # 11) Mark done
         update_progress(1.0)  # 100% done
+        await generate_embeddings(lecture_id)
         print(f"Processing completed for lecture {lecture_id}")
 
     except Exception as e:
@@ -303,8 +308,53 @@ async def process_media(lecture_id: int,file_path: str):
     #         os.remove(file_path)
 
 
-# For Live Transcription
+class EmbeddingRequest(BaseModel):
+    lecture_id: int
 
+@router.post('/generate_embeddings')
+async def generate_embeddings(request: EmbeddingRequest):
+    try:
+        EmbeddingService().generate_embeddings(request.lecture_id)
+        return {"message": "Embeddings generated successfully"}
+    except Exception as e:
+        print(f"Error generating embeddings: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post('/search_lectures')
+async def search_lectures(request: SearchRequest):
+    try:
+        results = LectureSearchService().search_and_explain(request.query, request.lecture_id,request.conversation_history, request.top_k)
+        return results
+    except Exception as e:
+        print(f"Error searching lectures: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class CourseEmbeddingRequest(BaseModel):
+    course_id: int
+
+@router.post('/generate_course_embeddings')
+async def generate_course_embeddings(request: CourseEmbeddingRequest):
+    try:
+        EmbeddingService().generate_course_embeddings(course_id=request.course_id)
+        return {"message": "Course embeddings generated successfully"}
+    except Exception as e:
+        print(f"Error generating course embeddings: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post('/search_courses')
+async def search_courses(request: SearchCourseRequest):
+    try:
+        embedding_service = LectureSearchService()
+        results = embedding_service.search_and_explain_course(request.query, request.course_id,request.conversation_history, top_k=request.top_k)
+        return results
+    except Exception as e:
+        print(f"Error searching courses: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+
+# For Live Transcription
 @router.websocket('/listen')
 async def websocket_listen(websocket: WebSocket):
     await websocket.accept()

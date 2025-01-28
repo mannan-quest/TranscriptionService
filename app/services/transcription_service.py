@@ -3,8 +3,6 @@ from typing import Dict, Any
 import httpx
 from deepgram import (
     DeepgramClient,
-    PrerecordedOptions,
-    FileSource,
 )
 from ..core.config import settings
 
