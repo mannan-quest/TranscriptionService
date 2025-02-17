@@ -15,6 +15,7 @@ from ...services.embedding_service import EmbeddingService
 from ...services.lecture_search_service import SearchRequest, LectureSearchService, SearchCourseRequest
 from ...services.live_data_formating import LiveDataFormating, AnalyzeLiveMediaRequest
 from ...services.media_converter import MediaConverter
+from ...services.quiz_generation import QuizGeneration
 from ...services.transcription_service import TranscriptionService
 from ...services.translation_service import TranslationAnalysisService
 from ...services.youtube_service import YouTubeService
@@ -352,6 +353,32 @@ async def search_courses(request: SearchCourseRequest):
         print(f"Error searching courses: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+
+class QuizGenerationRequest(BaseModel):
+    difficulty: str
+    lecture_id: int
+
+@router.post('/generate_quiz')
+async def generate_quiz(request: QuizGenerationRequest) -> List[dict]:
+    try:
+        quiz = QuizGeneration(request.lecture_id)
+        quiz_data = await quiz.generate_quiz(request.difficulty)
+        return quiz_data
+    except Exception as e:
+        print(f"Error generating quiz: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+
+@router.post('/generate_flashcards')
+async def generate_flashcards(request: QuizGenerationRequest) -> List[dict]:
+    try:
+        quiz = QuizGeneration(request.lecture_id)
+        flashcards = await quiz.generate_flashcards()
+        return flashcards
+    except Exception as e:
+        print(f"Error generating flashcards: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # For Live Transcription
