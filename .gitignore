@@ -75,3 +75,4 @@ docker-compose.yml
 *.orig
 *.rej
 
+temp_uploads

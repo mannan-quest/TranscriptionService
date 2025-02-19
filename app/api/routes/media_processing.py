@@ -291,7 +291,7 @@ async def process_media(lecture_id: int, file_path: str):
 
         # 11) Mark done
         update_progress(1.0)  # 100% done
-        await generate_embeddings(lecture_id)
+        await generate_embeddings(EmbeddingRequest(lecture_id=lecture_id))
         print(f"Processing completed for lecture {lecture_id}")
 
     except Exception as e:
