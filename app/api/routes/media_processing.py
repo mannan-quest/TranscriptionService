@@ -19,6 +19,7 @@ from ...services.quiz_generation import QuizGeneration
 from ...services.transcription_service import TranscriptionService
 from ...services.translation_service import TranslationAnalysisService
 from ...services.youtube_service import YouTubeService
+from ...services.notes_service import NotesGeneration
 import aiofiles
 
 router = APIRouter()
@@ -289,7 +290,10 @@ async def process_media(lecture_id: int, file_path: str):
                         "viewCount": resource["viewCount"],
                     }).execute()
 
-        # 11) Mark done
+        # 11) Generate Notes 
+        await generate_notes(lecture_id)
+        
+        # 12) Mark done
         update_progress(1.0)  # 100% done
         await generate_embeddings(EmbeddingRequest(lecture_id=lecture_id))
         print(f"Processing completed for lecture {lecture_id}")
@@ -367,7 +371,24 @@ async def generate_quiz(request: QuizGenerationRequest) -> List[dict]:
     except Exception as e:
         print(f"Error generating quiz: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+    
 
+@router.post('/generate_notes')
+async def generate_notes(lecture_id: int) -> List[dict]:
+    try:
+        notes = NotesGeneration(lecture_id)
+        notes_data = await notes.generate_notes()
+        # Update the notes in the database
+        for notes in notes_data:
+            print(f"Updating notes for segment {notes['segment_id']}...")
+            supabase.table("segments").update({
+                "segment_notes": notes["notes"]
+            }).eq("id", notes["segment_id"]).execute()
+
+        return notes_data
+    except Exception as e:
+        print(f"Error generating notes: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post('/generate_flashcards')
