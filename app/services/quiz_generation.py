@@ -223,7 +223,7 @@ class QuizGeneration:
             5. Aim for a balanced coverage of the lecture material, focusing on the most important concepts and ideas.
             6. Avoid questions about trivial information or lecturer's guidelines that don't contribute to understanding the subject matter.
             7. Make sure to follow the examples given for each type of question in the output format.
-
+            8. Make sure the answer and the answer in options is same or else all will fail :(
             Remember, the goal is to create a quiz that effectively tests the student's understanding of the key concepts and ideas presented in the lecture, encouraging critical thinking and application of knowledge.
 
         """
