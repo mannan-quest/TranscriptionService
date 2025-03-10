@@ -93,125 +93,146 @@ class QuizGeneration:
 
         # Create the prompt for OpenAI
         prompt = f"""
-            You are an expert educator tasked with creating a quiz based on lecture notes. Your goal is to generate thoughtful, challenging questions that test understanding of the material at the specified difficulty level.
+            You are an expert educator tasked with creating a thoughtful and challenging quiz based on lecture notes. Your goal is to generate questions that test understanding of the material at the specified difficulty level, focusing on key concepts and ideas rather than specific phrasings or minor details from the transcript.
 
-                    Here is the lecture transcript you'll be working with:
+            Here is the lecture transcript you'll be working with:
 
-                    <lecture_transcript>
-                    {whole_content}
-                    </lecture_transcript>
+            <lecture_transcript>
+            {whole_content}
+            </lecture_transcript>
 
-                    The difficulty level for this quiz is:
-                    <difficulty_level>
-                    {difficulty}
-                    </difficulty_level>
+            The difficulty level for this quiz is:
+            <difficulty_level>
+            {difficulty}
+            </difficulty_level>
 
-                    The number of questions to generate is:
-                    <num_questions>
-                    {questions}
-                    </num_questions>
+            The number of questions to generate is:
+            <num_questions>
+            {questions}
+            </num_questions>
 
-                    Before generating the quiz, please analyze the lecture notes and plan your questions. Wrap your analysis inside <lecture_analysis> tags. Include the following steps:
+            Before generating the quiz, please analyze the lecture notes and plan your questions. Wrap your lecture analysis and quiz planning process inside <lecture_analysis_and_quiz_planning> tags:
 
-                    1. Analyze the lecture notes:
-                    - List 5-7 key concepts or terms
-                    - For each concept or term, provide a relevant quote from the lecture notes
-                    - Note 3-5 important facts or statistics
-                    - Summarize 2-3 main ideas or arguments
-                    - Extract 3-5 key quotes
+            <lecture_analysis_and_quiz_planning>
+            1. Analyze the lecture content:
+            - List 5-7 key concepts or terms
+            - For each concept, provide a relevant quote from the lecture notes
+            - Note 3-5 important facts or statistics
+            - Summarize 2-3 main ideas or arguments
+            - Extract 3-5 key quotes that represent important points
 
-                    2. Plan questions:
-                    - For each key concept, brainstorm 2-3 potential question ideas
-                    - Classify each question idea according to Bloom's Taxonomy (Knowledge, Comprehension, Application, Analysis, Synthesis, Evaluation)
-                    - Generate question ideas for each type (multiple-choice, fill-in-the-blank, true/false)
-                    - Ensure questions align with the specified difficulty level
-                    - For hard questions, focus on presenting real-world or practical problems that require application of concepts from the notes
-                    - Evaluate the difficulty of each planned question on a scale of 1-10
-                    - Review the distribution of questions across Bloom's Taxonomy levels, ensuring it matches the overall difficulty
-                    - Add atleast 2-3 true/false questions and 2-3 fill-in-the-blank questions
+            2. Plan questions:
+            - For each key concept, brainstorm 2-3 potential question ideas
+            - Classify each question idea according to Bloom's Taxonomy
+            - Generate ideas for multiple-choice, fill-in-the-blank, and true/false questions
+            - Ensure questions align with the specified difficulty level
+            - For harder questions, focus on real-world applications of concepts
+            - Evaluate the difficulty of each planned question on a scale of 1-10
+            - Review the distribution across Bloom's Taxonomy levels
 
-                    3. Consider question formats:
-                    - Multiple choice: Create 4 options, each 5-6 words long
-                    - Brainstorm potential "distractor" options that are plausible but incorrect
-                    - Fill-in-the-blank: Include 4 possible options
-                    - True/False: Create unambiguous statements
+            3. Evaluate question relevance and importance:
+            - For each planned question, assess its relevance to the key concepts and ideas
+            - Ensure questions test understanding rather than recall of minor details
+            - Remove or revise any questions that focus on trivial information or lecturer's guidelines
+            - Prioritize questions that encourage critical thinking and application of concepts
 
-                    4. Prepare explanations:
-                    - For each question, note key points from the notes that support the correct answer
-                    - Identify potential misconceptions for incorrect answers
+            4. Consider question formats:
+            - Multiple choice: Create 4 options, each 5-6 words long make sure the option which is the answer is similar in length to the other options such that the user cannot easily guess the answer
+            - Brainstorm plausible but incorrect "distractor" options
+            - Fill-in-the-blank: Include 4 possible options
+            - True/False: Create unambiguous statements
 
-                    5. Final difficulty check:
-                    - Review the set of questions as a whole
-                    - Ensure the overall difficulty matches the specified level
-                    - Make any necessary adjustments to individual questions
-                    - Confirm that the question type distribution aligns with the difficulty level
-                    - Verify that the distribution across Bloom's Taxonomy levels is appropriate for the difficulty
+            5. Prepare explanations:
+            - Note key points from the lecture that support correct answers
+            - Identify potential misconceptions for incorrect answers
+            - Ensure explanations reinforce understanding of key concepts
 
-                    6. Map questions to lecture content:
-                    - For each question, identify the specific part of the lecture transcript it relates to
-                    - Ensure a balanced coverage of the lecture material
+            6. Final difficulty check:
+            - Review the set of questions as a whole
+            - Ensure the overall difficulty matches the specified level
+            - Adjust individual questions if necessary
+            - Confirm appropriate question type distribution
+            - Verify distribution across Bloom's Taxonomy levels
 
-                    7. Evaluate question type distribution:
-                    - Count the number of each question type (multiple-choice, fill-in-the-blank, true/false)
-                    - Adjust the distribution if necessary to ensure variety and appropriate difficulty
+            7. Map questions to lecture content:
+            - Identify the specific part of the lecture each question relates to
+            - Ensure balanced coverage of the lecture material
+            - Write down the relevant quote or section for each question
 
-                    After completing your analysis, generate the quiz using the following format:
+            8. Evaluate question type distribution:
+            - Count the number of each question type
+            - Adjust distribution if necessary for variety and appropriate difficulty
+            - Aim for a balanced mix of multiple-choice, fill-in-the-blank, and true/false questions
 
-                    <quiz>
-                    <question_1>
-                    Type: [Multiple Choice / Fill-in-the-Blank / True/False]
-                    Question: [Insert question text here]
-                    [For multiple choice and fill-in-the-blank:]
-                    A. [Option A]
-                    B. [Option B]
-                    C. [Option C]
-                    D. [Option D]
-                    [For true/false:]
-                    True or False: [Statement]
-                    [Options for True and False]
-                    True
-                    False
-                    Correct Answer: [Insert correct answer or True/False]
-                    Explanation: [Explain correct answer and why other options are incorrect, if applicable]
-                    </question_1>
+            </lecture_analysis_and_quiz_planning>
 
-                    [Repeat for each question, incrementing the question number]
-                    </quiz>
+            After completing your analysis and planning, generate the quiz using the following format:
 
-                    Example Questions
-                    1. Multiple Choice
-                    Question: What is the capital of France?
-                    A. London
-                    B. Paris
-                    C. Berlin
-                    D. Madrid
-                    Correct Answer: Paris
-                    Explanation: Paris is the capital of France.
+            <quiz>
+            <question_1>
+            Type: [Multiple Choice / Fill-in-the-Blank / True/False]
+            Question: [Insert question text here]
+            [For multiple choice and fill-in-the-blank:]
+            A. [Option A]
+            B. [Option B]
+            C. [Option C]
+            D. [Option D]
+            [For true/false:]
+            True or False: [Statement]
+            [Options for True and False]
+            True
+            False
+            Correct Answer: [Insert correct answer or True/False]
+            Explanation: [Explain correct answer and why other options are incorrect, if applicable]
+            </question_1>
 
-                    2. Fill-in-the-Blank
-                    Question: The formula for calculating the area of a rectangle is length x _______.
-                    A. width
-                    B. height
-                    C. perimeter
-                    D. diameter
-                    Correct Answer: width
-                    Explanation: The area of a rectangle is calculated by multiplying the length by the width.
+            [Repeat for each question, incrementing the question number]
+            </quiz>
 
-                    3. True/False
-                    Question: The Earth is flat.
-                    A. True
-                    B. False
-                    Correct Answer: False
-                    Explanation: The Earth is an oblate spheroid, not flat.
+            Example Questions
+            1. Multiple Choice
+            Question: What is the capital of France?
+            A. London
+            B. Paris
+            C. Berlin
+            D. Madrid
+            Correct Answer: Paris
+            Explanation: Paris is the capital of France.
 
-                    Ensure that all questions are clear, unambiguous, and directly related to the content of the lecture notes. Maintain consistency with the chosen difficulty level throughout the quiz, adjusting question types and complexity as needed. For hard questions, focus on real-world applications of the concepts rather than theoretical justifications.
+            2. Fill-in-the-Blank
+            Question: The formula for calculating the area of a rectangle is length x _______.
+            A. width
+            B. height
+            C. perimeter
+            D. diameter
+            Correct Answer: width
+            Explanation: The area of a rectangle is calculated by multiplying the length by the width.
+
+            3. True/False
+            Question: The Earth is flat.
+            A. True
+            B. False
+            Correct Answer: False
+            Explanation: The Earth is an oblate spheroid, not flat.
+
+            Important guidelines:
+            1. Ensure all questions are clear, unambiguous, and directly related to the key concepts and ideas from the lecture notes, rather than specific phrasings or minor details from the transcript.
+            2. Maintain consistency with the chosen difficulty level throughout the quiz.
+            3. For harder questions, focus on real-world applications of concepts rather than theoretical justifications.
+            4. Vary question types and complexity as needed to match the difficulty level.
+            5. Aim for a balanced coverage of the lecture material, focusing on the most important concepts and ideas.
+            6. Avoid questions about trivial information or lecturer's guidelines that don't contribute to understanding the subject matter.
+            7. Make sure to follow the examples given for each type of question in the output format.
+
+            Remember, the goal is to create a quiz that effectively tests the student's understanding of the key concepts and ideas presented in the lecture, encouraging critical thinking and application of knowledge.
 
         """
 
         # Make the API call
         completion =  self.client.beta.chat.completions.parse(
-            model="gpt-4o-mini",  
+            model="o3-mini",  # Adjust model name to whatever is valid in your environment
             response_format=Quiz,
+            # temperature=0.9,
             messages=[{"role": "user", "content": prompt}],
         )
 
