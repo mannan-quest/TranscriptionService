@@ -3,7 +3,6 @@ import os
 from openai import OpenAI
 from pydantic import BaseModel, ConfigDict
 from supabase import create_client
-
 from app.core.config import settings
 
 
@@ -69,38 +68,156 @@ class QuizGeneration:
             'id, content'
         ).eq('lecture_id', self.lecture_id).execute()
         return segments.data
+    
+    def get_notes(self) -> List[Dict[str, Any]]:
+        segments = self.supabase.table('segments').select(
+            'id, segment_notes'
+        ).eq('lecture_id', self.lecture_id).execute()
+        return segments.data
 
     async def generate_quiz(self, difficulty: str) -> List[Dict[str, Any]]:
-        segments = self.get_segments()
+        segments = self.get_notes()
 
         # Combine all segments content
-        whole_content = ' '.join(segment['content'] for segment in segments)
+        whole_content = ' '.join(segment['segment_notes'] for segment in segments)
+        
+        if difficulty == "easy":
+            difficulty = "1-3"
+            questions = 10
+        elif difficulty == "medium":
+            difficulty = "4-6"
+            questions = 10
+        elif difficulty == "hard":
+            difficulty = "7-10"
+            questions = 15
 
         # Create the prompt for OpenAI
         prompt = f"""
-        Generate a multiple choice quiz based on this content:
-        Content: {whole_content}
-        Difficulty: {difficulty}
+            You are an expert educator tasked with creating a quiz based on lecture notes. Your goal is to generate thoughtful, challenging questions that test understanding of the material at the specified difficulty level.
 
-        Requirements:
-        - Generate 10 multiple choice questions
-        - Each question should test understanding, not just memorization
-        - Each question should have 4 options including the correct answer
-        - Options should be distinct and plausible
-        - Provide an explanation for each question's answer
+                    Here is the lecture transcript you'll be working with:
+
+                    <lecture_transcript>
+                    {whole_content}
+                    </lecture_transcript>
+
+                    The difficulty level for this quiz is:
+                    <difficulty_level>
+                    {difficulty}
+                    </difficulty_level>
+
+                    The number of questions to generate is:
+                    <num_questions>
+                    {questions}
+                    </num_questions>
+
+                    Before generating the quiz, please analyze the lecture notes and plan your questions. Wrap your analysis inside <lecture_analysis> tags. Include the following steps:
+
+                    1. Analyze the lecture notes:
+                    - List 5-7 key concepts or terms
+                    - For each concept or term, provide a relevant quote from the lecture notes
+                    - Note 3-5 important facts or statistics
+                    - Summarize 2-3 main ideas or arguments
+                    - Extract 3-5 key quotes
+
+                    2. Plan questions:
+                    - For each key concept, brainstorm 2-3 potential question ideas
+                    - Classify each question idea according to Bloom's Taxonomy (Knowledge, Comprehension, Application, Analysis, Synthesis, Evaluation)
+                    - Generate question ideas for each type (multiple-choice, fill-in-the-blank, true/false)
+                    - Ensure questions align with the specified difficulty level
+                    - For hard questions, focus on presenting real-world or practical problems that require application of concepts from the notes
+                    - Evaluate the difficulty of each planned question on a scale of 1-10
+                    - Review the distribution of questions across Bloom's Taxonomy levels, ensuring it matches the overall difficulty
+                    - Add atleast 2-3 true/false questions and 2-3 fill-in-the-blank questions
+
+                    3. Consider question formats:
+                    - Multiple choice: Create 4 options, each 5-6 words long
+                    - Brainstorm potential "distractor" options that are plausible but incorrect
+                    - Fill-in-the-blank: Include 4 possible options
+                    - True/False: Create unambiguous statements
+
+                    4. Prepare explanations:
+                    - For each question, note key points from the notes that support the correct answer
+                    - Identify potential misconceptions for incorrect answers
+
+                    5. Final difficulty check:
+                    - Review the set of questions as a whole
+                    - Ensure the overall difficulty matches the specified level
+                    - Make any necessary adjustments to individual questions
+                    - Confirm that the question type distribution aligns with the difficulty level
+                    - Verify that the distribution across Bloom's Taxonomy levels is appropriate for the difficulty
+
+                    6. Map questions to lecture content:
+                    - For each question, identify the specific part of the lecture transcript it relates to
+                    - Ensure a balanced coverage of the lecture material
+
+                    7. Evaluate question type distribution:
+                    - Count the number of each question type (multiple-choice, fill-in-the-blank, true/false)
+                    - Adjust the distribution if necessary to ensure variety and appropriate difficulty
+
+                    After completing your analysis, generate the quiz using the following format:
+
+                    <quiz>
+                    <question_1>
+                    Type: [Multiple Choice / Fill-in-the-Blank / True/False]
+                    Question: [Insert question text here]
+                    [For multiple choice and fill-in-the-blank:]
+                    A. [Option A]
+                    B. [Option B]
+                    C. [Option C]
+                    D. [Option D]
+                    [For true/false:]
+                    True or False: [Statement]
+                    [Options for True and False]
+                    True
+                    False
+                    Correct Answer: [Insert correct answer or True/False]
+                    Explanation: [Explain correct answer and why other options are incorrect, if applicable]
+                    </question_1>
+
+                    [Repeat for each question, incrementing the question number]
+                    </quiz>
+
+                    Example Questions
+                    1. Multiple Choice
+                    Question: What is the capital of France?
+                    A. London
+                    B. Paris
+                    C. Berlin
+                    D. Madrid
+                    Correct Answer: Paris
+                    Explanation: Paris is the capital of France.
+
+                    2. Fill-in-the-Blank
+                    Question: The formula for calculating the area of a rectangle is length x _______.
+                    A. width
+                    B. height
+                    C. perimeter
+                    D. diameter
+                    Correct Answer: width
+                    Explanation: The area of a rectangle is calculated by multiplying the length by the width.
+
+                    3. True/False
+                    Question: The Earth is flat.
+                    A. True
+                    B. False
+                    Correct Answer: False
+                    Explanation: The Earth is an oblate spheroid, not flat.
+
+                    Ensure that all questions are clear, unambiguous, and directly related to the content of the lecture notes. Maintain consistency with the chosen difficulty level throughout the quiz, adjusting question types and complexity as needed. For hard questions, focus on real-world applications of the concepts rather than theoretical justifications.
 
         """
 
         # Make the API call
         completion =  self.client.beta.chat.completions.parse(
-            model="gpt-4o-mini",  # Adjust model name to whatever is valid in your environment
+            model="gpt-4o-mini",  
             response_format=Quiz,
             messages=[{"role": "user", "content": prompt}],
         )
 
         # Parse the response into our Pydantic model
         response_content = completion.choices[0].message.parsed
-
+        
         return response_content.questions
 
 
