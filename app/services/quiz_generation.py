@@ -1,7 +1,8 @@
+import json
 from typing import List, Dict, Any
 import os
-from openai import OpenAI
-from pydantic import BaseModel, ConfigDict
+from litellm import completion
+from pydantic import BaseModel
 from supabase import create_client
 from app.core.config import settings
 
@@ -57,7 +58,8 @@ class FlashCardResponse(BaseModel):
 
 class QuizGeneration:
     def __init__(self, lecture_id: int):
-        self.client = OpenAI(api_key=settings.OPENAI_API_KEY)
+        # self.client = ai.Client()  # Remove aisuite client
+
         self.SUPABASE_URL = os.getenv("SUPABASE_URL")
         self.SUPABASE_KEY = os.getenv("SUPABASE_KEY")
         self.supabase = create_client(self.SUPABASE_URL, self.SUPABASE_KEY)
@@ -116,7 +118,6 @@ class QuizGeneration:
             <lecture_analysis_and_quiz_planning>
             1. Analyze the lecture content:
             - List 5-7 key concepts or terms
-            - For each concept, provide a relevant quote from the lecture notes
             - Note 3-5 important facts or statistics
             - Summarize 2-3 main ideas or arguments
             - Extract 3-5 key quotes that represent important points
@@ -137,8 +138,8 @@ class QuizGeneration:
             - Prioritize questions that encourage critical thinking and application of concepts
 
             4. Consider question formats:
-            - Multiple choice: Create 4 options, each 5-6 words long make sure the option which is the answer is similar in length to the other options such that the user cannot easily guess the answer
-            - Brainstorm plausible but incorrect "distractor" options
+            - Multiple choice: Create 4 options, each 5-6 words LONG MAKE SURE OR ALL ELSE WILL FAIL 
+            - Brainstorm plausible but incorrect "distractor" options MAKE SURE THEY ARE IN SIMILAR LENGHT TO THE ANSWER
             - Fill-in-the-blank: Include 4 possible options
             - True/False: Create unambiguous statements
 
@@ -228,50 +229,52 @@ class QuizGeneration:
 
         """
 
-        # Make the API call
-        completion =  self.client.beta.chat.completions.parse(
-            model="o3-mini",  # Adjust model name to whatever is valid in your environment
-            response_format=Quiz,
-            # temperature=0.9,
-            messages=[{"role": "user", "content": prompt}],
-        )
+         # Make the API call using litellm
+        messages = [{"role": "user", "content": prompt}]
+        response = completion(model="anthropic/claude-3-haiku-20240307", messages=messages, response_format=Quiz)
 
-        # Parse the response into our Pydantic model
-        response_content = completion.choices[0].message.parsed
+        response_content = response.choices[0].message.content
+        parsed_response = json.loads(response_content)
+        print(parsed_response.get('questions', []))
+        return parsed_response.get('questions', [])
         
-        return response_content.questions
 
 
     async def generate_flashcards(self):
+        
+        print("Generating flashcards")
+
         segments = self.get_segments()
 
         # Combine all segments content
         whole_content = ' '.join(segment['content'] for segment in segments)
 
-        # Create the prompt for OpenAI
+        # Create the prompt for aisuite
         prompt = f"""
         You are creating flashcards designed to enhance both understanding and memorization of the provided content. Each flashcard should be structured effectively to reinforce key concepts, definitions, and critical insights.
 
-- The front can present a key idea, question, term, or concept.
-- The back should provide a clear, concise, and meaningful explanation, summary, or answer that promotes deeper comprehension.
-- The flashcards should vary in format, including direct questions, fill-in-the-blanks, and conceptual explanations, making learning engaging.
-- Assign a color to each flashcard that complements its theme. The colors should be visually appealing yet not too bright, making them easy on the eyes. The color should be specified in the HEX format (e.g., #FF5733).
-- Assign a text color to each flash card considering its color you are chasing, it's either going to be black or white.
-- Task:
-    -  Generate 10 well-structured flashcards based on the content below:
+        - The front can present a key idea, question, term, or concept.
+        - The back should provide a clear, concise, and meaningful explanation, summary, or answer that promotes deeper comprehension.
+        - The flashcards should vary in format, including direct questions, fill-in-the-blanks, and conceptual explanations, making learning engaging.
+        - Assign a color to each flashcard that complements its theme. The colors should be visually appealing yet not too bright, making them easy on the eyes. The color should be specified in the HEX format (e.g., #FF5733).
+        - Assign a text color to each flash card considering its color you are chasing, it's either going to be black or white.
+        - Task:
+            -  Generate 10 well-structured flashcards based on the content below:
 
-Content: {whole_content}
+        Content: {whole_content}
 
-Each flashcard should be designed to optimize retention while ensuring the learner gains a strong grasp of the subject matter.
+        Each flashcard should be designed to optimize retention while ensuring the learner gains a strong grasp of the subject matter.
         """
 
-        # Make the API call
-        completion =  self.client.beta.chat.completions.parse(
-            model="gpt-4o-mini",  # Adjust model name to whatever is valid in your environment
-            response_format=FlashCardResponse,
-            messages=[{"role": "user", "content": prompt}],
-        )
+        messages = [
+            {"role": "user", "content": prompt}
+        ]
 
-        response_content = completion.choices[0].message.parsed
+        # Make the API call using litellm
+        response = completion(model="openai/gpt-4o-mini", messages=messages,response_format=FlashCardResponse)
+        
+        response_content = response.choices[0].message.content
+        parsed_response = json.loads(response_content)
+        print(parsed_response.get('flashcards', []))
 
-        return  response_content.flashcards
+        return parsed_response.get('flashcards', [])

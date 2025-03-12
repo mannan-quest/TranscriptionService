@@ -11,3 +11,4 @@ uvicorn
 deepgram-sdk
 python-multipart
 httpx~=0.28.1
+litellm~=1.63.3

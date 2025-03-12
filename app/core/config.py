@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     SUPABASE_URL: str
     SUPABASE_KEY: str
     UPLOAD_FOLDER: str = "uploads"
+    ANTHROPIC_API_KEY: str
 
     class Config:
         env_file = ".env"
@@ -19,6 +20,7 @@ class Settings(BaseSettings):
 settings = Settings(
     DEEPGRAM_API_KEY=os.getenv("DEEPGRAM_API_KEY"),
     OPENAI_API_KEY=os.getenv("OPENAI_API_KEY"),
+    ANTHROPIC_API_KEY=os.getenv("ANTHROPIC_API_KEY"),
     YOUTUBE_API_KEY=os.getenv("YOUTUBE_API_KEY"),
     SUPABASE_URL=os.getenv("SUPABASE_URL"),
     SUPABASE_KEY=os.getenv("SUPABASE_KEY"),
