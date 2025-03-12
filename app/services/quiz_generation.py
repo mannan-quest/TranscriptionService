@@ -1,7 +1,7 @@
 import json
 from typing import List, Dict, Any
 import os
-from litellm import completion
+from litellm import completion, acompletion
 from pydantic import BaseModel
 from supabase import create_client
 from app.core.config import settings
@@ -13,19 +13,17 @@ class Quiz(BaseModel):
     class Config:
         json_schema_extra = {
             "type": "object",
-            "properties": {
-                "questions": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "question": {"type": "string"},
-                            "answer": {"type": "string"},
-                            "options": {"type": "array", "items": {"type": "string"}},
-                            "explanation": {"type": "string"},
-                        },
-                        "required": ["question", "answer", "options"],
+            "questions": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "question": {"type": "string"},
+                        "answer": {"type": "string"},
+                        "options": {"type": "array", "items": {"type": "string"}},
+                        "explanation": {"type": "string"},
                     },
+                    "required": ["question", "answer", "options"],
                 },
             },
             "required": ["questions"],
@@ -225,18 +223,33 @@ class QuizGeneration:
             6. Avoid questions about trivial information or lecturer's guidelines that don't contribute to understanding the subject matter.
             7. Make sure to follow the examples given for each type of question in the output format.
             8. Make sure the answer and the answer in options is same or else all will fail :(
+            9. Make sure to mix the types of questions by adding a mix of fill in the blanks, multiple choice, and true/false questions.
             Remember, the goal is to create a quiz that effectively tests the student's understanding of the key concepts and ideas presented in the lecture, encouraging critical thinking and application of knowledge.
 
         """
 
          # Make the API call using litellm
-        messages = [{"role": "user", "content": prompt}]
-        response = completion(model="anthropic/claude-3-haiku-20240307", messages=messages, response_format=Quiz)
-
+        messages = [{
+            "role": "user", 
+            "content": prompt
+            },{
+            "role": "assistant",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "<lecture_analysis_and_quiz_planning>"
+                }
+            ]
+        }]
+        response = await acompletion(model="anthropic/claude-3-5-sonnet-20241022", messages=messages, response_format=Quiz)
+        print(response)
         response_content = response.choices[0].message.content
         parsed_response = json.loads(response_content)
-        print(parsed_response.get('questions', []))
-        return parsed_response.get('questions', [])
+
+        questions = []
+        questions = parsed_response["questions"]
+
+        return questions
         
 
 
@@ -271,8 +284,7 @@ class QuizGeneration:
         ]
 
         # Make the API call using litellm
-        response = completion(model="openai/gpt-4o-mini", messages=messages,response_format=FlashCardResponse)
-        
+        response = await acompletion(model="openai/gpt-4o-mini", messages=messages,response_format=FlashCardResponse)
         response_content = response.choices[0].message.content
         parsed_response = json.loads(response_content)
         print(parsed_response.get('flashcards', []))
