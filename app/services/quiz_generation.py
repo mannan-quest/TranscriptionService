@@ -121,6 +121,7 @@ class QuizGeneration:
             - Extract 3-5 key quotes that represent important points
 
             2. Plan questions:
+            - Make sure to add a mix of fill in the blanks, multiple choice, and true/false questions.
             - For each key concept, brainstorm 2-3 potential question ideas
             - Classify each question idea according to Bloom's Taxonomy
             - Generate ideas for multiple-choice, fill-in-the-blank, and true/false questions
@@ -162,7 +163,9 @@ class QuizGeneration:
             - Count the number of each question type
             - Adjust distribution if necessary for variety and appropriate difficulty
             - Aim for a balanced mix of multiple-choice, fill-in-the-blank, and true/false questions
+            - Aim for approximately one-third of each question type
 
+            It's OK for this section to be quite long.
             </lecture_analysis_and_quiz_planning>
 
             After completing your analysis and planning, generate the quiz using the following format:
@@ -223,7 +226,7 @@ class QuizGeneration:
             6. Avoid questions about trivial information or lecturer's guidelines that don't contribute to understanding the subject matter.
             7. Make sure to follow the examples given for each type of question in the output format.
             8. Make sure the answer and the answer in options is same or else all will fail :(
-            9. Make sure to mix the types of questions by adding a mix of fill in the blanks, multiple choice, and true/false questions.
+            9. PLEASE MAKE SURE to mix the types of questions by adding a mix of fill-in-the-blank, multiple choice, and true/false questions.
             Remember, the goal is to create a quiz that effectively tests the student's understanding of the key concepts and ideas presented in the lecture, encouraging critical thinking and application of knowledge.
 
         """
@@ -241,7 +244,7 @@ class QuizGeneration:
                 }
             ]
         }]
-        response = await acompletion(model="anthropic/claude-3-5-sonnet-20241022", messages=messages, response_format=Quiz)
+        response = await acompletion(model="anthropic/claude-3-5-sonnet-20241022", messages=messages, response_format=Quiz, temperature=0.9)
         print(response)
         response_content = response.choices[0].message.content
         parsed_response = json.loads(response_content)
