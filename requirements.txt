@@ -6,9 +6,10 @@ moviepy~=2.1.1
 aiofiles~=24.1.0
 google-api-python-client~=2.156.0
 tenacity~=9.0.0
-openai~=1.58.1
+openai
 uvicorn
 deepgram-sdk
 python-multipart
 httpx~=0.28.1
-litellm~=1.63.3
+litellm
+supabase

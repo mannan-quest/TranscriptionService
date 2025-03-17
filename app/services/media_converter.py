@@ -7,7 +7,6 @@ from fastapi import UploadFile
 import aiofiles
 from supabase import create_client
 from ..core.config import settings
-import magic
 
 
 class MediaConverter:
@@ -34,26 +33,26 @@ class MediaConverter:
         video.close()
         return audio_path
 
-    async def fetch_file_from_supabase(self, bucket_name: str, file_path: str) -> str:
-        """Downloads file from Supabase and saves locally with a fixed name."""
-        try:
+    # async def fetch_file_from_supabase(self, bucket_name: str, file_path: str) -> str:
+    #     """Downloads file from Supabase and saves locally with a fixed name."""
+    #     try:
 
-            response = self.supabase.storage.from_(bucket_name).download(file_path)
+    #         response = self.supabase.storage.from_(bucket_name).download(file_path)
 
-            mime_type = magic.from_buffer(response, mime=True)
-            print(f"MIME type: {mime_type}")
+    #         mime_type = magic.from_buffer(response, mime=True)
+    #         print(f"MIME type: {mime_type}")
 
-            if isinstance(response, str):
-                raise Exception(f"Failed to fetch file: {response}")
+    #         if isinstance(response, str):
+    #             raise Exception(f"Failed to fetch file: {response}")
 
-            local_file_path = f'temp_media_file.{mime_type.split("/")[1]}'
+    #         local_file_path = f'temp_media_file.{mime_type.split("/")[1]}'
 
-            with open(local_file_path, 'wb') as f:
-                # response is already bytes
-                f.write(response)
+    #         with open(local_file_path, 'wb') as f:
+    #             # response is already bytes
+    #             f.write(response)
 
-            return local_file_path
+    #         return local_file_path
 
-        except Exception as e:
-            print(f"Error fetching file from Supabase: {e}")
-            raise
+    #     except Exception as e:
+    #         print(f"Error fetching file from Supabase: {e}")
+    #         raise

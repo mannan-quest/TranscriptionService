@@ -1,3 +1,4 @@
+import json
 from typing import List, Dict, Any
 
 from openai import AsyncOpenAI
@@ -64,6 +65,36 @@ class TranslationAnalysisService:
     def __init__(self):
         self.client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
 
+    async def analyze_pdf_text(self, paragraphs: List[str]) -> Dict[str, Any]:
+        """Analyze text extracted from a PDF file."""
+        try:
+            # Create a prompt for analysis
+            prompt = f"""
+            Analyze the following content extracted from a PDF document:
+            
+            {paragraphs}
+            
+            Please provide:
+            1. An overall topic/title for this content
+            2. A brief description of the content
+            3. A comprehensive summary
+            4. Break this content into logical segments based on topic changes or section breaks.
+            
+            Format your response as Markdown with correct headings.
+            
+            Ensure you split the content into logical segments based on topic changes or section breaks.
+            """
+            # Use OpenAI to analyze the content
+            response = await self.client.beta.chat.completions.parse(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": prompt}],
+            )
+            print(f"Response: {response}")
+            # Parse the response
+            return response.choices[0].message.content
+        except Exception as e:
+            print(f"Error analyzing PDF text: {e}")
+            raise
 
     async def analyze_full_text(self, paragraphs: List[dict]) -> dict:
         chunks = self.chunk_paragraphs_by_time(paragraphs)
