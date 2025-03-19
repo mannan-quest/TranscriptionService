@@ -10,6 +10,8 @@ from starlette.websockets import WebSocket
 from supabase import create_client
 import PyPDF2
 
+from app.services.lec_material_notes import LectureMaterialNotes
+
 from ...core.config import settings
 from ...services.assistant import Assistant
 from ...services.embedding_service import EmbeddingService
@@ -314,15 +316,9 @@ async def process_media(lecture_id: int, file_path: str):
     #         os.remove(file_path)
 
 # Add this new endpoint
-@router.post("/analyze-pdf", response_model=dict)
-async def analyze_pdf(material_id: int, file: UploadFile = File(...)):
+@router.post("/analyze-material", response_model=dict)
+async def analyze_material(material_id: int , file: UploadFile = File(...)):
     try:
-        if not file.filename.endswith('.pdf'):
-            raise HTTPException(
-                status_code=400,
-                detail="Invalid file format. Only PDF files are supported."
-            )
-
         # Initialize 'loading' and 'progress'
         supabase.table("lecture_materials").update({
             "progress": 0.0
@@ -339,108 +335,17 @@ async def analyze_pdf(material_id: int, file: UploadFile = File(...)):
         async with aiofiles.open(file_path, 'wb') as out_file:
             content = await file.read()  # async read
             await out_file.write(content)  # async write
+        
+        file_type = file_path.split('.')[-1]
+        print('file_type:', file_type)
+        material_notes = LectureMaterialNotes(material_id, file_path, file_type)
+        asyncio.create_task(material_notes.analyze_material())
 
-        print('Saved PDF to:', file_path)
-
-        # Start processing asynchronously
-        await process_pdf(material_id, file_path)
-        return {"message": "PDF processing started", "material_id": material_id}
+        return {"message": "Processing started", "material_id": material_id}
 
     except Exception as e:
-        print(f"Error analyzing PDF: {e}")
-        # Clean up file if it exists
-        if 'file_path' in locals() and os.path.exists(file_path):
-            os.remove(file_path)
+        print(f"Error analyzing media: {e}")
         raise HTTPException(status_code=500, detail=str(e))
-
-
-async def process_pdf(material_id: int, file_path: str):
-    """Process the PDF and update 'progress' column as each step completes."""
-    try:
-        def update_progress(value: float):
-            supabase.table("lecture_materials") \
-                .update({"progress": value}) \
-                .eq("material_id", material_id) \
-                .execute()
-
-        # 1) Extract text from PDF
-        text_content = extract_text_from_pdf(file_path)
-        if not text_content:
-            raise Exception("Could not extract text from PDF")
-        update_progress(0.2)  # 20% done
-
-        # 2) Split text into paragraphs
-        paragraphs = split_into_paragraphs(text_content)
-        update_progress(0.3)  # 30% done
-        
-        # 3) Analyze text content
-        translation_service = TranslationAnalysisService()
-        analysis = await translation_service.analyze_pdf_text(paragraphs)
-        print("Analysis")
-        print(analysis)
-        update_progress(0.5)  # 50% done
-
-        # 4) Insert notes
-        print("Inserting notes")
-        supabase.table("lecture_materials").update({
-            "notes": analysis
-        }).eq("material_id", material_id).execute()
-        update_progress(0.9)  # 90% done
-        
-        # 11) Mark done
-        update_progress(1.0)  # 100% done
-        print(f"PDF processing completed for lecture {material_id}")
-
-    except Exception as e:
-        # If something fails, update the DB accordingly
-        supabase.table("lectures").update({
-            "error": str(e),
-            "progress": 0.0  # Reset or keep partial progress
-        }).eq("lecture_id", material_id).execute() 
-        print(f"Error processing PDF lecture {material_id}: {e}")
-        raise e
-    finally:
-        # Clean up temporary file
-        if os.path.exists(file_path):
-            os.remove(file_path)
-
-
-def extract_text_from_pdf(file_path: str) -> str:
-    """Extract text content from a PDF file."""
-    try:
-        print(f"Extracting text from PDF: {file_path}")
-        print(f"File size: {os.path.getsize(file_path)} bytes")
-        with open(file_path, 'rb') as file:
-            pdf_reader = PyPDF2.PdfReader(file)
-            text = ""
-            print(f"Number of pages: {len(pdf_reader.pages)}")
-            # Extract text from each page
-            for page_num in range(len(pdf_reader.pages)):
-                page = pdf_reader.pages[page_num]
-                text += page.extract_text() + "\n\n"
-                
-            return text.strip()
-    except Exception as e:
-        print(f"Error extracting text from PDF: {e}")
-        return ""
-
-
-def split_into_paragraphs(text: str) -> List[str]:
-    """Split text into logical paragraphs."""
-    # First split by double newlines which typically indicate paragraphs
-    initial_split = [p.strip() for p in text.split('\n\n') if p.strip()]
-    
-    paragraphs = []
-    for block in initial_split:
-        # Further split long blocks if they contain single newlines
-        if len(block) > 500 and '\n' in block:
-            sub_paragraphs = [p.strip() for p in block.split('\n') if p.strip()]
-            paragraphs.extend(sub_paragraphs)
-        else:
-            paragraphs.append(block)
-    
-    return paragraphs
-
 
 class EmbeddingRequest(BaseModel):
     lecture_id: int
