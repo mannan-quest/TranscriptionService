@@ -73,16 +73,18 @@ class TranslationAnalysisService:
             Analyze the following content extracted from a PDF document:
             
             {paragraphs}
-            
-            Please provide:
-            1. An overall topic/title for this content
-            2. A brief description of the content
-            3. A comprehensive summary
-            4. Break this content into logical segments based on topic changes or section breaks.
+
+            I want you to make notes of the content and provide a detailed analysis of the content.
+            Make sure to include the following:
+                1. An overall topic/title for this content
+                2. A brief description of the content
+                3. A comprehensive summary
+                4. Break this content into logical segments based on topic changes or section breaks.
             
             Format your response as Markdown with correct headings.
             
             Ensure you split the content into logical segments based on topic changes or section breaks.
+            DO NOT PROVIDE ME WITH ANYTHING ELSE.
             """
             # Use OpenAI to analyze the content
             response = await self.client.beta.chat.completions.parse(
