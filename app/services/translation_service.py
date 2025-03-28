@@ -65,7 +65,7 @@ class TranslationAnalysisService:
     def __init__(self):
         self.client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
 
-    async def analyze_pdf_text(self, paragraphs: List[str]) -> Dict[str, Any]:
+    async def analyze_material_text(self, paragraphs: List[str]) -> Dict[str, Any]:
         """Analyze text extracted from a PDF file."""
         try:
             # Create a prompt for analysis
