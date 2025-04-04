@@ -2,6 +2,7 @@ import asyncio
 import os
 from typing import List
 import PyPDF2
+from openai import OpenAI
 import pptx
 from spire.doc import *
 from spire.doc.common import *
@@ -10,7 +11,7 @@ from fastapi import UploadFile
 from supabase import create_client
 
 from app.services.translation_service import TranslationAnalysisService
-
+from app.core.config import settings
 
 class LectureMaterialNotes:
     def __init__(self, lecture_material_id, file_path, filetype):
@@ -19,12 +20,14 @@ class LectureMaterialNotes:
         self.filetype = filetype
         self.SUPABASE_URL = os.getenv("SUPABASE_URL")
         self.SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+        self.client = OpenAI(api_key=settings.OPENAI_API_KEY)
         self.supabase = create_client(self.SUPABASE_URL, self.SUPABASE_KEY)
         self.translation_service = TranslationAnalysisService()
 
     def analyze_material(self):
         # Analyze the lecture material and route the material to the appropriate function
         # based on the type of material (e.g., txt, pdf, docx, etc.)
+        self._uploadtoVectorStore()  # Upload to OpenAI Vector Store
         if self.filetype == 'pdf':
             return self.process_pdf()
         elif self.filetype == 'ppt' or self.filetype == 'pptx':
@@ -42,6 +45,20 @@ class LectureMaterialNotes:
             .update({"progress": value}) \
             .eq("material_id", self.lecture_material_id) \
             .execute()
+
+    def _uploadtoVectorStore(self):
+        """Upload the file to OpenAI Vector Store for this specific lecture"""
+        # 1) Get the vectorstore id from supabase
+        # 2) Update the vectorstore with the file ID
+        lecture_id = self.supabase.table("lecture_materials").select("lecture_id").eq("material_id", self.lecture_material_id).execute()
+        lecture_id = lecture_id.data[0]['lecture_id']
+        vectorstore_id = self.supabase.table("lectures").select("vectorstore_id").eq("lecture_id", lecture_id).execute()
+        vectorstore_id = vectorstore_id.data[0]['vectorstore_id']
+
+        with open(self.file_path, 'rb') as file:
+            file_response = self.client.vector_stores.files.upload_and_poll(vector_store_id=vectorstore_id, file=file)
+            file_id = file_response.id
+            print(f"File uploaded to OpenAI Vector Store with ID: {file_id}")
 
     async def process_txt(self):
         try:

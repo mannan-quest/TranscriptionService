@@ -23,6 +23,9 @@ class SearchRequest(BaseModel):
     lecture_id: int
     conversation_history: Optional[List[Message]] = None
     top_k: int = 3
+    vectorstore_id: str
+
+    file_search: bool    
 
     model_config = ConfigDict(
         arbitrary_types_allowed=True,
@@ -125,7 +128,7 @@ class LectureSearchService:
             }
 
 
-    def search_and_explain(self, query: str, lecture_id: int, conversation_history: List[Message], top_k: int = 3, web_search: bool = False) -> Dict[str, Any]:
+    def search_and_explain(self, query: str, lecture_id: int, conversation_history: List[Message], vectorstore_id: str, top_k: int = 3, web_search: bool = False, file_search: bool = False) -> Dict[str, Any]:
         try:
             # Get relevant segments
             schema = LectureResponse.model_json_schema()
@@ -211,6 +214,11 @@ class LectureSearchService:
                         "parameters": {"query": query, "num_results": 3}
                     }
                 })
+            
+            tools.append({
+                "type": "file_search",
+                "vector_store_ids": [vectorstore_id],
+            })
 
             # Get GPT response with structured output
             response = self.client.responses.create(
