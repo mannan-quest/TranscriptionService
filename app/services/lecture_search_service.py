@@ -23,6 +23,7 @@ class SearchRequest(BaseModel):
     lecture_id: int
     conversation_history: Optional[List[Message]] = None
     top_k: int = 3
+    web_search: bool
 
     model_config = ConfigDict(
         arbitrary_types_allowed=True,
@@ -52,7 +53,9 @@ class SearchCourseResponse(BaseModel):
 
 class SearchResponse(BaseModel):
     answer: str
+    webAnswer: str
     segments: List[dict]
+    references: List[str]
 
     model_config = ConfigDict(
         arbitrary_types_allowed=True,
@@ -60,9 +63,10 @@ class SearchResponse(BaseModel):
     )
 
 class LectureResponse(BaseModel):
-    answer: str = Field(description="The answer to the user's query")
-    isSegmentsRequired: bool = Field(description="Whether segments should be included in the response")
-    references: List[str] = Field(default_factory=list, description="List of reference URLs from web search")
+    answer: str = Field(description="Answer based on lecture segments or high-level summary.")
+    webAnswer: str = Field(description="Answer based on web search, if performed.")
+    isSegmentsRequired: bool = Field(description="Whether lecture segments were used for the answer.")
+    references: List[str] = Field(default_factory=list, description="List of reference URLs retrieved from web search.")
 
     
 class LectureSearchService:
@@ -125,121 +129,117 @@ class LectureSearchService:
             }
 
 
-    def search_and_explain(self, query: str, lecture_id: int, conversation_history: List[Message], top_k: int = 3, web_search: bool = False) -> Dict[str, Any]:
+    def search_and_explain(self, query: str, lecture_id: int, conversation_history: List[Message], top_k: int = 3, web_search: bool = True) -> Dict[str, Any]:
         try:
-            # Get relevant segments
+            # Define schema
             schema = LectureResponse.model_json_schema()
             schema["required"] = list(schema["properties"].keys())
             schema["additionalProperties"] = False
+
+            # Get lecture segments
             segments = self.embedding_service.search_lecture(query, lecture_id, top_k)
 
-            # Create a prompt that includes conversation history
+            # Prepare conversation context
             conversation_context = "\n".join([
                 f"{'User' if msg.is_user else 'Assistant'}: {msg.text}"
-                for msg in conversation_history[-5:]  # Include last 5 messages for context
+                for msg in conversation_history[-5:]  # Only last 5 messages
             ])
 
-            context = "\n".join([f"Segment {i + 1}: {seg['content']}"
-                                for i, seg in enumerate(segments)])
+            # Prepare lecture segments context
+            context = "\n".join([f"Segment {i + 1}: {seg['content']}" for i, seg in enumerate(segments)])
 
-            prompt = f"""You are helping a user understand a lecture. Based on the conversation history and lecture segments, provide a **strictly relevant** answer to the query.
+            prompt = f"""
+            You are assisting a user in understanding a lecture. Your task is to produce TWO SEPARATE answers:
 
-                ### **Guidelines:**
-                1. **Strict Relevance to Lecture:**  
-                - You MUST answer only based on the provided lecture segments and conversation history.  
-                - If the query contains any part **not related to the lecture**, you **must ignore** the unrelated part and mention:  
-                    **"I can only provide information related to the lecture."**  
-                - If the **entire** query is unrelated to the lecture, respond with:  
-                    **"This question is not related to the lecture."**
+            1. **Lecture Answer:** Only based on lecture segments and conversation history.
+            2. **Web Answer:** Based on information retrieved from a web search (if web_search = true).
 
-                2. **Handling of Mixed Queries:**  
-                - If the query asks about both a relevant topic and an unrelated one, **ONLY** answer the relevant part and **completely ignore** the unrelated part.  
-                - Example:  
-                    **User:** "Can you explain REST APIs and also tell me about Hitler?"  
-                    **Response:** "I can only provide information related to the lecture."  
+            ### Rules:
 
-                3. **General Lecture Questions:**  
-                - If the user asks **general questions about the lecture** (e.g., "What is this lecture about?", "Summarize this lecture"),  
-                    - DO NOT use the lecture segments.  
-                    - Provide a high-level summary.  
-                    - Set `'isSegmentsRequired'` to `false`.  
+            1. **Lecture Relevance Check**:
+                - If the entire query is unrelated to the lecture, set answer to: "This question is not related to the lecture." and do not generate a webAnswer.
+                - If the query is partially related and partially unrelated, only answer the relevant part. Explicitly mention that unrelated parts were ignored.
 
-                4. **Greetings & Farewells:**  
-                - If the user says "hi", "hello", "thanks", "bye", etc., respond naturally and **do not include references** or additional follow-ups.  
-                - Example:  
-                    - **User:** "Thanks!" → **Response:** "You're welcome!"  
-                    - **User:** "Bye!" → **Response:** "Goodbye! Have a great day!"  
+            2. **General Lecture Queries**:
+                - For queries like "Summarize the lecture" or "What is this lecture about?", DO NOT use lecture segments. Just provide a short high-level summary.
+                - Set isSegmentsRequired to false.
 
-                5. **Reference Usage:**  
-                - You **must provide exactly 3 references** using a web search **only** if:  
-                    - The user asks about the lecture generally.  
-                    - The user asks a query directly related to the lecture.  
-                - **DO NOT embed references within the answer text.**  
-                - **If no web search is needed (e.g., greetings, farewells, irrelevant queries), return an empty reference list.**
+            3. **Specific Lecture Queries**:
+                - If the question is about specific parts of the lecture, use the lecture segments.
+                - Set isSegmentsRequired to true.
 
-                ### **Response Format:**
-                Return a JSON object with these properties:
-                - **'answer'**: A concise, relevant response. No reference links or extra formatting inside.  
-                - **'isSegmentsRequired'**: `true` if lecture segments were used, `false` otherwise.  
-                - **'references'**: A list of URLs (empty if no web search was performed).  
+            4. **Greetings & Farewells**:
+                - For greetings (hi, hello) or farewells (thanks, bye), respond naturally. Leave webAnswer and references empty.
 
-                ---
+            5. **Mandatory Web Search Handling**:
+                - ONLY perform web search if web_search = true AND the query is lecture related (whether general or specific).
+                - DO NOT skip the web search just because you "know" the answer.
+                - Even if the answer is sufficient, still generate a webAnswer separately using web information.
+                - Return at least 3 web search references.
 
-                ### **Context for Answer:**
-                - **Previous Conversation:**  
-                {conversation_context}
+            ### Return Format:
+            Respond strictly in this JSON format:
 
-                - **User's Question:**  
-                "{query}"
+            {{
+                "answer": "",
+                "webAnswer": "",
+                "isSegmentsRequired": true/false,
+                "references": []
+            }}
 
-                - **Relevant Lecture Segments:**  
-                {context}
+            Context for Answer:
+            Previous Conversation:
+            {conversation_context}
 
-                Now generate a **strictly relevant and concise** response in the required format.
+            User's Question:
+            {query}
+
+            Relevant Lecture Segments:
+            {context}
+
+            web_search:
+            {web_search}
             """
 
-            # Initialize messages for the API call
-            messages = [{"role": "user", "content": prompt}]
 
-            # Define tools only if web_search is enabled
-            tools = []
-            if web_search:
-                tools.append({
-                    "type": "web_search",
-                    "function": {
-                        "name": "web_search",
-                        "parameters": {"query": query, "num_results": 3}
-                    }
-                })
-
-            # Get GPT response with structured output
+            # Call GPT
             response = self.client.responses.create(
                 model="gpt-4o",
-                input=messages,
-                tools=tools,  # Only includes web search if enabled
+                input=[{"role": "user", "content": prompt}],
+                tools=[{"type": "web_search_preview"}] if web_search else [],
                 temperature=0.7,
                 text={
                     "format": {
                         "type": "json_schema",
                         "name": "lecture_response",
-                        "schema": schema ,
+                        "schema": schema,
                         "strict": True
                     }
                 }
             )
 
-             # Parse the structured response using Pydantic
+            # Parse the structured response
             parsed_response = LectureResponse.model_validate_json(response.output_text)
 
-            # Ensure references is empty if web_search was not requested
+            # Optional Fallbacks:
             if not web_search:
+                parsed_response.webAnswer = ""
                 parsed_response.references = []
+
+            # If web_search was requested but somehow returned no references
+            if web_search and len(parsed_response.references) < 3:
+                parsed_response.references = []  # fallback to empty
+                parsed_response.webAnswer = "Web search did not return enough reliable information to provide an additional answer."
+
+            # If segments were not used, remove them from final result
             if not parsed_response.isSegmentsRequired:
                 segments = []
 
             return {
                 "answer": parsed_response.answer,
-                "segments": segments,  # No segment processing logic provided
+                "webAnswer": parsed_response.webAnswer,
+                "isSegmentsRequired": parsed_response.isSegmentsRequired,
+                "segments": segments,
                 "references": parsed_response.references
             }
 
@@ -247,6 +247,8 @@ class LectureSearchService:
             print(f"Error in search_and_explain: {e}")
             return {
                 "answer": "An error occurred while processing the request.",
+                "webAnswer": "",
+                "isSegmentsRequired": False,
                 "segments": [],
                 "references": []
             }

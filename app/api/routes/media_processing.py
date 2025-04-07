@@ -362,7 +362,7 @@ async def generate_embeddings(request: EmbeddingRequest):
 @router.post('/search_lectures')
 async def search_lectures(request: SearchRequest):
     try:
-        results = LectureSearchService().search_and_explain(request.query, request.lecture_id,request.conversation_history, request.top_k)
+        results = LectureSearchService().search_and_explain(request.query, request.lecture_id,request.conversation_history, request.top_k, request.web_search)
         return results
     except Exception as e:
         print(f"Error searching lectures: {e}")
