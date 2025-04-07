@@ -24,6 +24,9 @@ class SearchRequest(BaseModel):
     conversation_history: Optional[List[Message]] = None
     top_k: int = 3
     web_search: bool
+    vectorstore_id: str
+
+    file_search: bool    
 
     model_config = ConfigDict(
         arbitrary_types_allowed=True,
@@ -129,7 +132,7 @@ class LectureSearchService:
             }
 
 
-    def search_and_explain(self, query: str, lecture_id: int, conversation_history: List[Message], top_k: int = 3, web_search: bool = True) -> Dict[str, Any]:
+    def search_and_explain(self, query: str, lecture_id: int, conversation_history: List[Message], vectorstore_id: str, top_k: int = 3, web_search: bool = True, file_search: bool = False) -> Dict[str, Any]:
         try:
             # Define schema
             schema = LectureResponse.model_json_schema()

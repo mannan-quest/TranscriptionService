@@ -296,7 +296,14 @@ async def process_media(lecture_id: int, file_path: str):
         # 11) Generate Notes 
         await generate_notes(lecture_id)
         
-        # 12) Mark done
+        # 12) Create a vector store on openai for this specific lecture
+        client = OpenAI(api_key=settings.OPENAI_API_KEY)
+        vector_store = client.vector_stores.create(name=resource["title"]+"_" + str(lecture_id))
+        supabase.table("lectures").update({
+            "vectorstore_id": vector_store.id,
+        }).eq("lecture_id", lecture_id).execute()
+
+        # 13) Mark done
         update_progress(1.0)  # 100% done
         await generate_embeddings(EmbeddingRequest(lecture_id=lecture_id))
         print(f"Processing completed for lecture {lecture_id}")
@@ -308,12 +315,12 @@ async def process_media(lecture_id: int, file_path: str):
             "error": str(e),
             "progress": 0.0  # Reset or keep partial progress as you wish
         }).eq("lecture_id", lecture_id).execute()
-        raise e
         print(f"Error processing lecture {lecture_id}: {e}")
-    # finally:
-    #     # Clean up temporary file
-    #     if os.path.exists(file_path):
-    #         os.remove(file_path)
+        raise e
+    finally:
+        # Clean up temporary file
+        if os.path.exists(file_path):
+            os.remove(file_path)
 
 # Add this new endpoint
 @router.post("/analyze-material", response_model=dict)
@@ -362,7 +369,7 @@ async def generate_embeddings(request: EmbeddingRequest):
 @router.post('/search_lectures')
 async def search_lectures(request: SearchRequest):
     try:
-        results = LectureSearchService().search_and_explain(request.query, request.lecture_id,request.conversation_history, request.top_k, request.web_search)
+        results = LectureSearchService().search_and_explain(request.query, request.lecture_id,request.conversation_history, request.vectorstore_id, request.top_k, request.web_search)
         return results
     except Exception as e:
         print(f"Error searching lectures: {e}")
