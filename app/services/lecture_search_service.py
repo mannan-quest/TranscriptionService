@@ -22,10 +22,9 @@ class SearchRequest(BaseModel):
     query: str
     lecture_id: int
     conversation_history: Optional[List[Message]] = None
+    vectorstore_id: str
     top_k: int = 3
     web_search: bool
-    vectorstore_id: str
-
     file_search: bool    
 
     model_config = ConfigDict(
@@ -132,7 +131,7 @@ class LectureSearchService:
             }
 
 
-    def search_and_explain(self, query: str, lecture_id: int, conversation_history: List[Message], vectorstore_id: str, top_k: int = 3, web_search: bool = True, file_search: bool = False) -> Dict[str, Any]:
+    def search_and_explain(self, query: str, lecture_id: int, conversation_history: List[Message], vectorstore_id: str, top_k: int = 3, web_search: bool = True, file_search: bool = True) -> Dict[str, Any]:
         try:
             # Define schema
             schema = LectureResponse.model_json_schema()
@@ -203,13 +202,15 @@ class LectureSearchService:
             web_search:
             {web_search}
             """
-
-
+            tools = []
+            if web_search: tools.append({"type": "web_search_preview"})
+            if file_search: tools.append({"type": "file_search","vector_store_ids": [vectorstore_id],})
+            print(f"enabled tools: {tools}")
             # Call GPT
             response = self.client.responses.create(
-                model="gpt-4o",
+                model="gpt-4o-mini",
                 input=[{"role": "user", "content": prompt}],
-                tools=[{"type": "web_search_preview"}] if web_search else [],
+                tools=tools,
                 temperature=0.7,
                 text={
                     "format": {
@@ -221,29 +222,31 @@ class LectureSearchService:
                 }
             )
 
+            print(f"Response: {response.output_text}")
+
             # Parse the structured response
-            parsed_response = LectureResponse.model_validate_json(response.output_text)
+            parsed_response = json.loads(response.output_text)
 
             # Optional Fallbacks:
             if not web_search:
-                parsed_response.webAnswer = ""
-                parsed_response.references = []
+                parsed_response["webAnswer"] = ""
+                parsed_response["references"] = []
 
             # If web_search was requested but somehow returned no references
-            if web_search and len(parsed_response.references) < 3:
-                parsed_response.references = []  # fallback to empty
-                parsed_response.webAnswer = "Web search did not return enough reliable information to provide an additional answer."
+            if web_search and len(parsed_response["references"]) < 2:
+                parsed_response["references"] = []  # fallback to empty
+                parsed_response["webAnswer"] = "Web search did not return enough reliable information to provide an additional answer."
 
             # If segments were not used, remove them from final result
-            if not parsed_response.isSegmentsRequired:
+            if not parsed_response["isSegmentsRequired"]:
                 segments = []
 
             return {
-                "answer": parsed_response.answer,
-                "webAnswer": parsed_response.webAnswer,
-                "isSegmentsRequired": parsed_response.isSegmentsRequired,
+                "answer": parsed_response["answer"],
+                "webAnswer": parsed_response["webAnswer"],
+                "isSegmentsRequired": parsed_response["isSegmentsRequired"],
                 "segments": segments,
-                "references": parsed_response.references
+                "references": parsed_response["references"]
             }
 
         except Exception as e:
