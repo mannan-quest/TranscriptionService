@@ -1,29 +1,27 @@
 import os
-import asyncio
-from datetime import datetime
-from typing import List
-
-from fastapi import APIRouter, UploadFile, File, HTTPException
-from openai import OpenAI
-from pydantic import BaseModel, Field
-from starlette.websockets import WebSocket
-from supabase import create_client
 import PyPDF2
-
-from app.services.lec_material_notes import LectureMaterialNotes
+import asyncio
+import aiofiles
+from typing import List
+from openai import OpenAI
+from datetime import datetime
+from pydantic import BaseModel
+from supabase import create_client
+from starlette.websockets import WebSocket
+from fastapi import APIRouter, UploadFile, File, HTTPException
 
 from ...core.config import settings
 from ...services.assistant import Assistant
-from ...services.embedding_service import EmbeddingService
-from ...services.lecture_search_service import SearchRequest, LectureSearchService, SearchCourseRequest
-from ...services.live_data_formating import LiveDataFormating, AnalyzeLiveMediaRequest
-from ...services.media_converter import MediaConverter
-from ...services.quiz_generation import QuizGeneration
-from ...services.transcription_service import TranscriptionService
-from ...services.translation_service import TranslationAnalysisService
-from ...services.youtube_service import YouTubeService
 from ...services.notes_service import NotesGeneration
-import aiofiles
+from ...services.media_converter import MediaConverter
+from ...services.youtube_service import YouTubeService
+from ...services.quiz_generation import QuizGeneration
+from ...services.embedding_service import EmbeddingService
+from ...services.transcription_service import TranscriptionService
+from ...services.translation_service import LectureAnalysis, TranslationAnalysisService
+from ...services.live_data_formating import LiveDataFormating, AnalyzeLiveMediaRequest
+from ...services.lec_material_notes import extract_text_from_pdf, LectureMaterialNotes
+from ...services.lecture_search_service import SearchRequest, LectureSearchService, SearchCourseRequest
 
 router = APIRouter()
 supabase = create_client(settings.SUPABASE_URL, settings.SUPABASE_KEY)
@@ -142,7 +140,7 @@ async def analyze_live_media(request: AnalyzeLiveMediaRequest):
 @router.post("/analyze-media", response_model=dict)
 async def analyze_media(lecture_id: int, file: UploadFile = File(...)):
     try:
-        if not file.filename.endswith(('.mp3', '.mp4')):
+        if not file.filename.endswith(('.mp3', '.mp4', '.pdf')):
             raise HTTPException(
                 status_code=400,
                 detail="Invalid file format. Only MP3 and MP4 files are supported."
@@ -168,8 +166,13 @@ async def analyze_media(lecture_id: int, file: UploadFile = File(...)):
 
         print('Saved file to:', file_path)
 
-        # Start processing asynchronously
-        asyncio.create_task(process_media(lecture_id, file_path))
+        # Check if the file is a PDF
+        if file_path.endswith('.pdf'):
+            # Process the PDF file
+            asyncio.create_task(process_content(lecture_id, file_path))
+        else:
+            # Process the audio/video file
+            asyncio.create_task(process_recording(lecture_id, file_path))
         return {"message": "Processing started", "lecture_id": lecture_id}
 
     except Exception as e:
@@ -179,9 +182,8 @@ async def analyze_media(lecture_id: int, file: UploadFile = File(...)):
             os.remove(file_path)
         raise HTTPException(status_code=500, detail=str(e))
 
-
-async def process_media(lecture_id: int, file_path: str):
-    """Process the media and update 'progress' column as each step completes."""
+async def process_content(lecture_id: int, file_path: str):
+    """Process the textual content and update 'progress' column as each step completes."""
     try:
         def update_progress(value: float):
             supabase.table("lectures") \
@@ -189,13 +191,113 @@ async def process_media(lecture_id: int, file_path: str):
                 .eq("lecture_id", lecture_id) \
                 .execute()
 
-        # 1) Fetch the file path from the 'lectures' table
-        # lecture_data = supabase.table("lectures") \
-        #     .select("recording") \
-        #     .eq("lecture_id", lecture_id) \
-        #     .execute()
-        # transcription_path = lecture_data.data[0]["recording"]
-        # file_name = transcription_path.split("/", 1)[1]
+        # Initialize services
+        translation_service = TranslationAnalysisService()
+        youtube_service = YouTubeService()
+        update_progress(0.2)  # 20% done
+
+        # 1) Grab all the content from the file assuming it's a PDF
+        if file_path.endswith('.pdf'):
+            text_content = extract_text_from_pdf(file_path)   
+        else:
+            raise HTTPException(status_code=400, detail="Unsupported file format. Only PDF files are supported.")
+        update_progress(0.4)  # 40% done
+
+        # 2) Get overall analysis
+        analysis = await translation_service.analyze_lecture_text(text_content)
+        print('analysis:', analysis)
+        update_progress(0.6)  # 60% done
+
+        # 3) Get YouTube resources
+        youtube_resources = []
+        for keyword in analysis.overall_keywords:
+            print('keyword:', keyword)
+            youtube_resources.extend(youtube_service.get_related_videos(keyword, max_results=1))
+        update_progress(0.7)  # 70% done
+
+        # 4) Clear old segments/resources
+        segments_to_be_deleted = supabase.table("segments").select("id").eq("lecture_id", lecture_id).execute()
+        for segment in segments_to_be_deleted.data:
+            # Adjust to access `id` based on the structure
+            supabase.table("segment_resources").delete().eq("segment_id", segment['id']).execute()
+        supabase.table("segments").delete().eq("lecture_id", lecture_id).execute()
+        supabase.table("resources").delete().eq("lecture_id", lecture_id).execute()
+        
+        # 5) Update main lecture data
+        supabase.table("lectures").update({
+            "summary": analysis.comprehensive_summary,
+            "loading": False,
+            "topic": analysis.overall_topic,
+            "description": analysis.content_description,
+        }).eq("lecture_id", lecture_id).execute()
+        update_progress(0.8)  # 80% done
+
+        # 6) Insert YouTube resources
+        for resource in youtube_resources:
+            supabase.table("resources").insert({
+                "lecture_id": lecture_id,
+                "title": resource["title"],
+                "url": resource["url"],
+                "description": resource["description"],
+                "thumbnail": resource["thumbnail"],
+                "channel_name": resource["channel_name"],
+                "published_at": resource["published_at"],
+            }).execute()
+        update_progress(0.9)  # 90% done
+
+        # 7) Insert Segments
+        for segment in analysis.subtopics:
+            segment_response = supabase.table("segments").insert({
+                "lecture_id": lecture_id,
+                "content": segment.original_content,
+                "segment_start": 0,
+                "segment_end": 0,
+                "topic": segment.title,
+                "description": segment.specific_summary ,
+                "segment_notes": segment.detailed_description
+            }).execute()
+
+            # Get the segment_id from the response
+            segment_id = segment_response.data[0]['id']
+
+            # Get YouTube resources for this segment's topic
+            segment_youtube_resources = []
+            for keyword in segment.key_terminology:
+                segment_youtube_resources.extend(youtube_service.get_related_videos(keyword, max_results=1))
+            for resource in segment_youtube_resources:
+                supabase.table("segment_resources").insert({
+                    "segment_id": segment_id,
+                    "title": resource["title"],
+                    "url": resource["url"],
+                    "description": resource["description"],
+                    "thumbnail": resource["thumbnail"],
+                    "channel_name": resource["channel_name"],
+                    "published_at": resource["published_at"],
+                    "viewCount": resource["viewCount"],
+                }).execute()
+
+        client = OpenAI(api_key=settings.OPENAI_API_KEY)
+        vector_store = client.vector_stores.create(name=analysis.overall_topic + "_" + str(lecture_id))
+        supabase.table("lectures").update({
+            "vectorstore_id": vector_store.id,
+        }).eq("lecture_id", lecture_id).execute()
+
+        update_progress(1.0)  # 100% done
+
+        await generate_embeddings(EmbeddingRequest(lecture_id=lecture_id))
+        print(f"Processing completed for lecture {lecture_id}")
+
+    except Exception as e:
+        print(f"Error processing content: {e}")
+
+async def process_recording(lecture_id: int, file_path: str):
+    """Process the Recording and update 'progress' column as each step completes."""
+    try:
+        def update_progress(value: float):
+            supabase.table("lectures") \
+                .update({"progress": value}) \
+                .eq("lecture_id", lecture_id) \
+                .execute()
 
         # Initialize services
         media_converter = MediaConverter()

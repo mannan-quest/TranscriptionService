@@ -66,7 +66,7 @@ class LectureMaterialNotes:
             with open(self.file_path, 'r') as file:
                 text = file.read()
                 self.update_progress(0.2)  # 20% done
-                text = self.sanitize_text(text)
+                text = sanitize_text(text)
                 self.update_progress(0.5)  # 50% done
                 analysis = await self.translation_service.analyze_material_text([text])
                 self.update_progress(0.7)
@@ -82,7 +82,7 @@ class LectureMaterialNotes:
             try:
                 # Update the database with the error status
                 self.supabase.table("lecture_materials").update({
-                    "error": self.sanitize_text(error_msg),
+                    "error": sanitize_text(error_msg),
                     "progress": 0.0  # Reset progress
                 }).eq("material_id", self.lecture_material_id).execute()
             except Exception as db_error:
@@ -106,7 +106,7 @@ class LectureMaterialNotes:
             self.update_progress(progress)  # 20% done
             doc = Document()
             doc.LoadFromFile(self.file_path)
-            doc_text = self.sanitize_text(doc.GetText())
+            doc_text = sanitize_text(doc.GetText())
             doc.Close()
             
             self.update_progress(0.5)  # 50% done
@@ -132,7 +132,7 @@ class LectureMaterialNotes:
             try:
                 # Update the database with the error status
                 self.supabase.table("lecture_materials").update({
-                    "error": self.sanitize_text(error_msg),
+                    "error": sanitize_text(error_msg),
                     "progress": 0.0  # Reset progress
                 }).eq("material_id", self.lecture_material_id).execute()
             except Exception as db_error:
@@ -181,7 +181,7 @@ class LectureMaterialNotes:
                     
                     # Only add non-empty slide text
                     if slide_text.strip():
-                        text_runs.append(self.sanitize_text(slide_text))
+                        text_runs.append(sanitize_text(slide_text))
                 except Exception as slide_error:
                     print(f"Error processing slide: {slide_error}")
                     # Continue with next slide instead of failing completely
@@ -213,7 +213,7 @@ class LectureMaterialNotes:
             try:
                 # Make sure we're updating the correct table with sanitized error message
                 self.supabase.table("lecture_materials").update({
-                    "error": self.sanitize_text(error_msg),
+                    "error": sanitize_text(error_msg),
                     "progress": 0.0  # Reset progress
                 }).eq("material_id", self.lecture_material_id).execute()
             except Exception as db_error:
@@ -235,13 +235,16 @@ class LectureMaterialNotes:
         try:
 
             # 1) Extract text from PDF
-            text_content = self.extract_text_from_pdf()
+            text_content = extract_text_from_pdf()
             if not text_content:
                 raise Exception("Could not extract text from PDF")
             self.update_progress(0.2)  # 20% done
 
             # 2) Split text into paragraphs
-            paragraphs = self.split_into_paragraphs(text_content)
+            paragraphs = split_into_paragraphs(text_content)
+            self.supabase.table("lecture_materials").update({
+                "paragraphs": paragraphs
+            }).eq("material_id", self.lecture_material_id).execute()
             self.update_progress(0.3)  # 30% done
             
             # 3) Analyze text content
@@ -268,7 +271,7 @@ class LectureMaterialNotes:
             try:
                 # Note: Changed from "lectures" to "lecture_materials"
                 self.supabase.table("lecture_materials").update({
-                    "error": self.sanitize_text(error_msg),
+                    "error": sanitize_text(error_msg),
                     "progress": 0.0
                 }).eq("material_id", self.lecture_material_id).execute()
             except Exception as db_error:
@@ -281,48 +284,44 @@ class LectureMaterialNotes:
             if os.path.exists(self.file_path):
                 os.remove(self.file_path)
 
-    def extract_text_from_pdf(self):
-        # Extract text from a PDF file
-        try:
-            print(f"Extracting text from PDF: {self.file_path}")
-            print(f"File size: {os.path.getsize(self.file_path)} bytes")
-            with open(self.file_path, 'rb') as file:
-                pdf_reader = PyPDF2.PdfReader(file)
-                text = ""
-                print(f"Number of pages: {len(pdf_reader.pages)}")
-                # Extract text from each page
-                for page_num in range(len(pdf_reader.pages)):
-                    page = pdf_reader.pages[page_num]
-                    text += self.sanitize_text(page.extract_text()) + "\n\n"
-                return text.strip()
-        except Exception as e:
-            print(f"Error extracting text from PDF: {e}")
-            return ""
-            
-    def split_into_paragraphs(self,text: str) -> List[str]:
-        """Split text into logical paragraphs."""
-        # First split by double newlines which typically indicate paragraphs
-        initial_split = [p.strip() for p in text.split('\n\n') if p.strip()]
-        paragraphs = []
-        
-        for block in initial_split:
-            # Further split long blocks if they contain single newlines
-            if len(block) > 500 and '\n' in block:
-                sub_paragraphs = [p.strip() for p in block.split('\n') if p.strip()]
-                paragraphs.extend(sub_paragraphs)
-            else:
-                paragraphs.append(block)
-        
-        self.supabase.table("lecture_materials").update({
-            "paragraphs": paragraphs
-        }).eq("material_id", self.lecture_material_id).execute()
+def extract_text_from_pdf(file_path: str) -> str:
+    """Extract text from a PDF file using PyPDF2."""
+    # Extract text from a PDF file
+    try:
+        print(f"Extracting text from PDF: {file_path}")
+        print(f"File size: {os.path.getsize(file_path)} bytes")
+        with open(file_path, 'rb') as file:
+            pdf_reader = PyPDF2.PdfReader(file)
+            text = ""
+            print(f"Number of pages: {len(pdf_reader.pages)}")
+            # Extract text from each page
+            for page_num in range(len(pdf_reader.pages)):
+                page = pdf_reader.pages[page_num]
+                text += sanitize_text(page.extract_text()) + "\n\n"
+            return text.strip()
+    except Exception as e:
+        print(f"Error extracting text from PDF: {e}")
+        return ""
 
-        return paragraphs
+def split_into_paragraphs(text: str) -> List[str]:
+    """Split text into logical paragraphs."""
+    # First split by double newlines which typically indicate paragraphs
+    initial_split = [p.strip() for p in text.split('\n\n') if p.strip()]
+    paragraphs = []
     
-    def sanitize_text(self, text: str) -> str:
-        """Sanitize text by removing unwanted characters."""
-        unwanted_chars = ['\u0000', '\n', '\r']
+    for block in initial_split:
+        # Further split long blocks if they contain single newlines
+        if len(block) > 500 and '\n' in block:
+            sub_paragraphs = [p.strip() for p in block.split('\n') if p.strip()]
+            paragraphs.extend(sub_paragraphs)
+        else:
+            paragraphs.append(block)
+    return paragraphs
 
-        for char in unwanted_chars:
-            text = text.replace(char, '')
-        return text
+def sanitize_text(text: str) -> str:
+    """Sanitize text by removing unwanted characters."""
+    unwanted_chars = ['\u0000', '\n', '\r']
+
+    for char in unwanted_chars:
+        text = text.replace(char, '')
+    return text
